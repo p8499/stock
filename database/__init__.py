@@ -1,5 +1,5 @@
 from database import industry_constituents, instrumentinfos, history_instruments, history_1d, \
-    trading_derivative_indicator, balance_sheet, income_statement, cashflow_statement, power
+    trading_derivative_indicator, balance_sheet, income_statement, cashflow_statement, finance, power
 
 
 def build():
@@ -12,3 +12,4 @@ def build():
     income_statement.increment_build()
     cashflow_statement.increment_build()
     power.increment_build()
+    finance.increment_build()

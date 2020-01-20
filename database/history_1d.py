@@ -2,6 +2,7 @@ from datetime import timedelta
 
 from dateutil.utils import today
 from gm.api import history, ADJUST_NONE
+from psycopg2 import extras
 
 from database import instrumentinfos
 from env import read_conn, write_conn
@@ -21,6 +22,24 @@ def close_r1(read, symbol, date):
     row = cursor.fetchone()
     cursor.close()
     return row[0]
+
+
+def close_r2(read, symbol, date):
+    cursor = read.cursor()
+    cursor.execute(
+        'SELECT close FROM (SELECT eob, close FROM history_1d WHERE symbol=%s AND eob<%s ORDER BY eob DESC LIMIT 2) s1 ORDER BY eob ASC LIMIT 1',
+        (symbol, date))
+    row = cursor.fetchone()
+    cursor.close()
+    return row[0]
+
+
+def all_close(read, symbol, bob, eob):
+    cursor = read.cursor(cursor_factory=extras.DictCursor)
+    cursor.execute('SELECT close FROM history_1d WHERE symbol=%s AND eob BETWEEN %s AND %s', (symbol, bob, eob))
+    rows = cursor.fetchall()
+    cursor.close()
+    return rows
 
 
 def max_eob(read, symbol):

@@ -5,12 +5,10 @@ from smtplib import SMTP_SSL
 
 from gm.api import get_instrumentinfos
 
-from database import history_1d
-from env import mail_receivers, smtp_server, smtp_port, password, from_addr, read_conn, c
+from env import mail_receivers, smtp_server, smtp_port, password, from_addr, c
 
 
 def output(context, date, l_sell, l_keep, l_buy):
-    read = read_conn()
     subject = '%s盘后计划' % date
     content = ''
     content += '<table border="1">'
@@ -19,27 +17,26 @@ def output(context, date, l_sell, l_keep, l_buy):
     content += '</thead>'
     content += '<tbody>'
     for item in l_sell:
-        ins = get_instrumentinfos(symbols=item[0])[0]
+        ins = get_instrumentinfos(symbols=item['symbol'])[0]
         name = ins['sec_name']
         content += '<tr><td>%s</td><td>%s</td><td><font color="green">卖出%s</font></td></tr>' \
-                   % (item[0], name, item[1])
+                   % (item['symbol'], name, item['policy'])
     for item in l_keep:
-        ins = get_instrumentinfos(symbols=item[0])[0]
+        ins = get_instrumentinfos(symbols=item['symbol'])[0]
         name = ins['sec_name']
         content += '<tr><td>%s</td><td>%s</td><td>%s</td></tr>' \
-                   % (item[0], name, item[1])
+                   % (item['symbol'], name, '')
     for item in l_buy:
-        ins = get_instrumentinfos(symbols=item[0])[0]
+        ins = get_instrumentinfos(symbols=item['symbol'])[0]
         name = ins['sec_name']
-        nav = context.account().cash['nav']
-        price = float(min(history_1d.close(read, item[0], date), history_1d.close_r1(read, item[0], date)))
-        volume = floor(nav / c / price / 100) * 100
+        vacancies = c - len(l_keep)
+        cash = context.account().cash['available']
+        volume = floor(cash / vacancies / item['price'] / 100) * 100 if vacancies > 0 else 0
         content += '<tr><td>%s</td><td>%s</td><td><font color="red">买入%s %.2f * %d</font></td></tr>' \
-                   % (item[0], name, item[1], price, volume)
+                   % (item['symbol'], name, item['policy'], item['price'], volume)
     content += '</tbody>'
     content += '</table>'
     send_all(subject, content)
-    read.close()
 
 
 def send_all(subject, content):

@@ -1,7 +1,10 @@
+from math import ceil
+
 from gm.api import *
 
 from database import history_1d, power
 from env import read_conn
+from policy.common import rate
 
 
 def s5(read, symbol, date):
@@ -77,27 +80,30 @@ def sell(context, date):
     d250 = pow5 <= pow5r1 and pow10 <= pow10r1 and pow20 <= pow20r1 and pow60 <= pow60r1 and pow120 <= pow120r1 and pow250 < pow250r1
     if d5:
         for symbol in filter(lambda x: x not in result, l_pos_symbols):
-            if symbol not in list(map(lambda x: x[0], result)) and s5(read, symbol, date):
-                result.append((symbol, 's5'))
+            if symbol not in list(map(lambda x: x['symbol'], result)) and s5(read, symbol, date):
+                result.append({'symbol': symbol, 'policy': 's5'})
     if d10:
         for symbol in filter(lambda x: x not in result, l_pos_symbols):
-            if symbol not in list(map(lambda x: x[0], result)) and s10(read, symbol, date):
-                result.append((symbol, 's10'))
+            if symbol not in list(map(lambda x: x['symbol'], result)) and s10(read, symbol, date):
+                result.append({'symbol': symbol, 'policy': 's10'})
     if d20:
         for symbol in filter(lambda x: x not in result, l_pos_symbols):
-            if symbol not in list(map(lambda x: x[0], result)) and s20(read, symbol, date):
-                result.append((symbol, 's20'))
+            if symbol not in list(map(lambda x: x['symbol'], result)) and s20(read, symbol, date):
+                result.append({'symbol': symbol, 'policy': 's20'})
     if d60:
         for symbol in filter(lambda x: x not in result, l_pos_symbols):
-            if symbol not in list(map(lambda x: x[0], result)) and s60(read, symbol, date):
-                result.append((symbol, 's60'))
+            if symbol not in list(map(lambda x: x['symbol'], result)) and s60(read, symbol, date):
+                result.append({'symbol': symbol, 'policy': 's60'})
     if d120:
         for symbol in filter(lambda x: x not in result, l_pos_symbols):
-            if symbol not in list(map(lambda x: x[0], result)) and s120(read, symbol, date):
-                result.append((symbol, 's120'))
+            if symbol not in list(map(lambda x: x['symbol'], result)) and s120(read, symbol, date):
+                result.append({'symbol': symbol, 'policy': 's120'})
     if d250:
         for symbol in filter(lambda x: x not in result, l_pos_symbols):
-            if symbol not in list(map(lambda x: x[0], result)) and s250(read, symbol, date):
-                result.append((symbol, 's250'))
+            if symbol not in list(map(lambda x: x['symbol'], result)) and s250(read, symbol, date):
+                result.append({'symbol': symbol, 'policy': 's250'})
+    result.sort(key=lambda x: rate(read, x['symbol'], date), reverse=True)
+    result = result[:ceil(len(result) / 4)]
     read.close()
+
     return result

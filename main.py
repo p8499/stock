@@ -1,62 +1,71 @@
-from datetime import date, timedelta
+from datetime import date, datetime
 
 from gm.api import *
 
-from database import history_1d, build
-from env import read_conn, c, cash
-from policy import sell, buy
+from env import c, strategy_id, token, cash
+from policy import skb
 from sender import output
 
 
 def init(context):
     # build()
-    schedule(schedule_func=prepare, date_rule='1d', time_rule='18:00:00')
-    schedule(schedule_func=action, date_rule='1d', time_rule='09:30:00')
+    schedule(schedule_func=go, date_rule='1d', time_rule='00:00:00')
 
 
-def prepare(context):
-    build()
+def go(context):
     today = date(context.now.year, context.now.month, context.now.day)
-    tomorrow = today + timedelta(days=1)
-    # if len(get_trading_dates(exchange='SHSE', start_date=tomorrow, end_date=tomorrow)) + len(
-    #         get_trading_dates(exchange='SZSE', start_date=tomorrow, end_date=tomorrow)) > 0:
-    s, k, b = list_skb(context, today)
-    output(context, today, s, k, b)
-
-
-def action(context):
-    today = date(context.now.year, context.now.month, context.now.day)
-    yesterday = today - timedelta(days=1)
+    # 如果今天是交易日
     if len(get_trading_dates(exchange='SHSE', start_date=today, end_date=today)) + len(
             get_trading_dates(exchange='SZSE', start_date=today, end_date=today)) > 0:
-        s, k, b = list_skb(context, yesterday)
-        read = read_conn()
-        for item_sell in s:
-            order_target_volume(symbol=item_sell[0], position_side=PositionSide_Long, volume=0,
-                                order_type=OrderType_Market, order_duration=OrderDuration_GTC)
-        for item_buy in b:
-            close = min(history_1d.close(read, item_buy[0], yesterday),
-                        history_1d.close_r1(read, item_buy[0], yesterday))
-            order_target_percent(symbol=item_buy[0], position_side=PositionSide_Long, percent=1 / c,
-                                 order_type=OrderType_Limit, price=close, order_duration=OrderDuration_FAK)
-        read.close()
+        yesterday = max(datetime.strptime(get_previous_trading_date('SHSE', today), "%Y-%m-%d").date(),
+                        datetime.strptime(get_previous_trading_date('SZSE', today), "%Y-%m-%d").date())
+        context.s, context.k, context.b = skb(context, yesterday)
+        output(context, yesterday, context.s, context.k, context.b)
+        unsubscribe(symbols='*', frequency='60s')
+        # s中每只股票加入到买入监测tick
+        subscribe(symbols=list(map(lambda x: x['symbol'], context.s)), frequency='60s', count=1, wait_group=False,
+                  unsubscribe_previous=False)
+        # b中每只股票加入到买入监测tick
+        subscribe(symbols=list(map(lambda x: x['symbol'], context.b)), frequency='60s', count=1, wait_group=False,
+                  unsubscribe_previous=False)
 
 
-def list_skb(context, dt):
-    l_sell = sell(context, dt)
-    l_sell_symbols = list(map(lambda x: x[0], l_sell))
-    l_pos_symbols = list(map(lambda x: x['symbol'], context.account().positions(side=PositionSide_Long)))
-    l_keep_symbols = list(filter(lambda x: x not in l_sell_symbols, l_pos_symbols))
-    l_keep = list(map(lambda x: (x, ''), l_keep_symbols))
-    l_buy = buy(context, dt)[:(c - len(l_pos_symbols) + len(l_sell_symbols))]
-    return l_sell, l_keep, l_buy
+def on_bar(context, bars):
+    items_sell = list(filter(lambda x: x['symbol'] == bars[0].symbol, context.s))
+    items_buy = list(filter(lambda x: x['symbol'] == bars[0].symbol, context.b))
+    if len(items_sell) > 0 \
+            and bars[0].close > 0 \
+            and context.account().position(symbol=items_sell[0]['symbol'], side=PositionSide_Long) is not None:
+        order_target_volume(symbol=items_sell[0]['symbol'], position_side=PositionSide_Long, volume=0,
+                            order_type=OrderType_Market,
+                            order_duration=OrderDuration_GTC)
+    elif len(items_buy) > 0 \
+            and bars[0].close > 0 \
+            and context.account().position(symbol=items_buy[0]['symbol'], side=PositionSide_Long) is None \
+            and bars[0].close <= items_buy[0]['price']:
+        vacancies = c - len(context.account().positions(side=PositionSide_Long))
+        if vacancies > 0:
+            cash = context.account().cash['available']
+            order_target_value(symbol=items_buy[0]['symbol'], position_side=PositionSide_Long, value=cash / vacancies,
+                               order_type=OrderType_Market,
+                               order_duration=OrderDuration_FAK)
+        else:
+            for dict in reversed(context.k):
+                if context.account().position(symbol=dict['symbol'], side=PositionSide_Long) is not None \
+                        and dict['score'] < items_buy[0]['score']:
+                    print('%s(%f) replaces %s(%f)'
+                          % (items_buy[0]['symbol'], items_buy[0]['score'], dict['symbol'], dict['score']))
+                    order_target_volume(symbol=dict['symbol'], position_side=PositionSide_Long, volume=0,
+                                        order_type=OrderType_Market,
+                                        order_duration=OrderDuration_GTC)
+                    break
 
 
 if __name__ == '__main__':
-    run(strategy_id='',
+    run(strategy_id=strategy_id,
         filename='main.py',
         mode=MODE_BACKTEST,
-        token='',
-        backtest_start_time='2018-01-01 16:00:00',
-        backtest_end_time='2019-12-04 23:59:59',
+        token=token,
+        backtest_start_time='2018-01-01 00:00:00',
+        backtest_end_time='2020-01-16 23:59:59',
         backtest_initial_cash=cash)
